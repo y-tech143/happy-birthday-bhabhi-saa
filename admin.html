@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Admin · Visitors</title>
+
+<style>
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  font-family:system-ui,sans-serif;
+  background:#fff3f7;
+  color:#5a3a4a;
+  padding:18px;
+}
+
+.card{
+  max-width:380px;
+  margin:12vh auto;
+  background:#fff;
+  padding:26px;
+  border-radius:22px;
+  box-shadow:0 12px 34px #8a4a6826;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+input,button{
+  font:inherit;
+  font-size:16px;
+  padding:11px 16px;
+  border-radius:24px;
+  border:2px solid #f3b8cb;
+}
+
+input{
+  outline:none;
+  background:#fff;
+  color:#5a3a4a;
+}
+
+input:focus{
+  border-color:#c45c83;
+}
+
+button{
+  background:#e8a0b4;
+  color:#fff;
+  border:0;
+  cursor:pointer;
+}
+
+button.s{background:#8a4a68}
+
+button.d{
+  background:#d9534f;
+  padding:6px 12px;
+  font-size:13px;
+}
+
+.top{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:center;
+  justify-content:space-between;
+  max-width:900px;
+  margin:0 auto 14px;
+}
+
+.st{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  max-width:900px;
+  margin:0 auto 14px;
+}
+
+.st div{
+  flex:1;
+  min-width:110px;
+  background:#fff;
+  border-radius:16px;
+  padding:12px;
+  text-align:center;
+}
+
+.st b{
+  display:block;
+  font-size:1.8rem;
+}
+
+.tw{
+  max-width:900px;
+  margin:auto;
+  background:#fff;
+  border-radius:16px;
+  overflow-x:auto;
+}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+  min-width:600px;
+}
+
+th,td{
+  padding:11px 14px;
+  text-align:left;
+  border-bottom:1px solid #fbe3ea;
+}
+
+th{background:#fbe3ea}
+
+#err,#note{
+  color:#d9534f;
+  margin:0;
+}
+
+#note{color:#8a4a68}
+
+[hidden]{display:none!important}
+</style>
+</head>
+
+<body>
+
+<!-- ADMIN LOGIN -->
+
+<div class="card" id="login">
+
+<h2 style="margin:0">🔒 Admin Login</h2>
+
+<input
+id="em"
+type="email"
+placeholder="Admin email"
+autocomplete="username"
+>
+
+<input
+id="pw"
+type="password"
+placeholder="Password"
+autocomplete="current-password"
+>
+
+<button id="li">Login</button>
+
+<p id="err"></p>
+
+</div>
+
+
+<!-- DASHBOARD -->
+
+<div id="dash" hidden>
+
+<div class="top">
+
+<h2 style="margin:0">💗 Visitors</h2>
+
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+
+<input id="q" placeholder="Search name">
+
+<button id="csv" class="s">Export CSV</button>
+
+<button id="lo">Logout</button>
+
+</div>
+</div>
+
+
+<!-- STATISTICS -->
+
+<div class="st">
+
+<div>
+<b id="n1">0</b>
+Total Visits
+</div>
+
+<div>
+<b id="n2">0</b>
+Today
+</div>
+
+<div>
+<b id="n3">0</b>
+Unique Names
+</div>
+
+</div>
+
+
+<p id="note" style="max-width:900px;margin:0 auto 10px"></p>
+
+
+<!-- VISITORS TABLE -->
+
+<div class="tw">
+
+<table>
+
+<thead>
+<tr>
+<th>Visitor Name</th>
+<th>Date</th>
+<th>Visit Time</th>
+<th>Device</th>
+<th>Action</th>
+</tr>
+</thead>
+
+<tbody id="tb"></tbody>
+
+</table>
+
+</div>
+
+</div>
+
+
+<script type="module">
+
+// FIREBASE CONFIGURATION
+
+const FB_CONFIG = {
+
+  apiKey: "AIzaSyCXCqx5u6i2P-TBY4toQ3vC9s5e2V3ixBwK",
+
+  authDomain: "birthday-7b846.firebaseapp.com",
+
+  databaseURL:
+  "https://birthday-7b846-default-rtdb.firebaseio.com",
+
+  projectId: "birthday-7b846",
+
+  storageBucket: "birthday-7b846.firebasestorage.app",
+
+  messagingSenderId: "739617380779",
+
+  appId: "1:739617380779:web:85d77448e849b80ae11aee",
+
+  measurementId: "G-3JX4T2CVJ8"
+
+};
+
+
+// FIREBASE IMPORTS
+
+const U="https://www.gstatic.com/firebasejs/10.12.2/";
+
+const {
+  initializeApp
+}=await import(U+"firebase-app.js");
+
+const {
+  getAuth,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
+}=await import(U+"firebase-auth.js");
+
+const {
+  getDatabase,
+  ref,
+  query,
+  orderByChild,
+  onValue,
+  remove
+}=await import(U+"firebase-database.js");
+
+
+// INITIALIZE FIREBASE
+
+const app=initializeApp(FB_CONFIG);
+
+const auth=getAuth(app);
+
+const db=getDatabase(app);
+
+
+// ELEMENTS
+
+const $=s=>document.querySelector(s);
+
+let rows=[];
+
+let unsubscribe=null;
+
+
+// DATE FUNCTION
+
+const D=r=>r.time?new Date(r.time):null;
+
+
+// LOGIN
+
+$("#li").onclick=async()=>{
+
+  $("#err").textContent="";
+
+  const email=$("#em").value.trim();
+
+  const password=$("#pw").value;
+
+  if(!email||!password){
+
+    $("#err").textContent="Enter email and password.";
+
+    return;
+
+  }
+
+  $("#li").disabled=true;
+
+  $("#li").textContent="Logging in...";
+
+  try{
+
+    await signInWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
+
+  }
+
+  catch(e){
+
+    console.error(e);
+
+    $("#err").textContent=
+    "Login failed. Check your email and password.";
+
+  }
+
+  finally{
+
+    $("#li").disabled=false;
+
+    $("#li").textContent="Login";
+
+  }
+
+};
+
+
+// ENTER KEY LOGIN
+
+$("#pw").onkeydown=e=>{
+
+  if(e.key==="Enter"){
+
+    $("#li").click();
+
+  }
+
+};
+
+
+// LOGOUT
+
+$("#lo").onclick=()=>signOut(auth);
+
+
+// SEARCH
+
+$("#q").oninput=render;
+
+
+// AUTHENTICATION STATE
+
+onAuthStateChanged(auth,user=>{
+
+  $("#login").hidden=!!user;
+
+  $("#dash").hidden=!user;
+
+  if(unsubscribe){
+
+    unsubscribe();
+
+    unsubscribe=null;
+
+  }
+
+  if(!user){
+
+    rows=[];
+
+    return;
+
+  }
+
+
+  // DATABASE LISTENER
+
+  unsubscribe=onValue(
+
+    query(
+      ref(db,"visitors"),
+      orderByChild("time")
+    ),
+
+    snap=>{
+
+      $("#note").textContent="";
+
+      rows=[];
+
+      snap.forEach(child=>{
+
+        rows.push({
+
+          id:child.key,
+
+          ...child.val()
+
+        });
+
+      });
+
+      rows.reverse();
+
+      render();
+
+    },
+
+    error=>{
+
+      console.error(error);
+
+      $("#note").textContent=
+      "Access denied. Check Firebase Database Rules.";
+
+    }
+
+  );
+
+});
+
+
+// RENDER DASHBOARD
+
+function render(){
+
+  const search=$("#q").value.toLowerCase();
+
+  const list=rows.filter(r=>
+
+    (r.name||"").toLowerCase().includes(search)
+
+  );
+
+  const today=new Date().toDateString();
+
+
+  // STATISTICS
+
+  $("#n1").textContent=rows.length;
+
+  $("#n2").textContent=rows.filter(r=>
+
+    D(r)&&D(r).toDateString()===today
+
+  ).length;
+
+  $("#n3").textContent=new Set(
+
+    rows.map(r=>(r.name||"").trim().toLowerCase())
+
+  ).size;
+
+
+  // TABLE
+
+  const tb=$("#tb");
+
+  tb.innerHTML="";
+
+
+  list.forEach(r=>{
+
+    const d=D(r);
+
+    const tr=tb.insertRow();
+
+
+    const values=[
+
+      r.name||"Unknown",
+
+      d?d.toLocaleDateString([],{
+
+        day:"numeric",
+
+        month:"short",
+
+        year:"numeric"
+
+      }):"...",
+
+      d?d.toLocaleTimeString([],{
+
+        hour:"numeric",
+
+        minute:"2-digit"
+
+      }):"...",
+
+      r.device||"Unknown"
+
+    ];
+
+
+    values.forEach(value=>{
+
+      tr.insertCell().textContent=value;
+
+    });
+
+
+    // DELETE BUTTON
+
+    const cell=tr.insertCell();
+
+    const btn=document.createElement("button");
+
+    btn.className="d";
+
+    btn.textContent="Delete";
+
+    btn.onclick=async()=>{
+
+      if(!confirm("Delete this visitor record?"))return;
+
+      try{
+
+        await remove(
+
+          ref(db,"visitors/"+r.id)
+
+        );
+
+      }
+
+      catch(e){
+
+        alert("Unable to delete this record.");
+
+        console.error(e);
+
+      }
+
+    };
+
+    cell.appendChild(btn);
+
+  });
+
+}
+
+
+// EXPORT CSV
+
+$("#csv").onclick=()=>{
+
+  const q=v=>{
+
+    v=String(v??"");
+
+    if(/^[=+\-@]/.test(v))v="'"+v;
+
+    return '"'+v.replace(/"/g,'""')+'"';
+
+  };
+
+
+  const output=[
+
+    "Name,Date,Time,Device",
+
+    ...rows.map(r=>{
+
+      const d=D(r);
+
+      return [
+
+        r.name,
+
+        d?d.toLocaleDateString():"",
+
+        d?d.toLocaleTimeString():"",
+
+        r.device
+
+      ].map(q).join(",");
+
+    })
+
+  ].join("\n");
+
+
+  const blob=new Blob(
+
+    [output],
+
+    {type:"text/csv;charset=utf-8"}
+
+  );
+
+
+  const url=URL.createObjectURL(blob);
+
+  const a=document.createElement("a");
+
+  a.href=url;
+
+  a.download="birthday-visitors.csv";
+
+  a.click();
+
+  URL.revokeObjectURL(url);
+
+};
+
+</script>
+
+</body>
+</html>
